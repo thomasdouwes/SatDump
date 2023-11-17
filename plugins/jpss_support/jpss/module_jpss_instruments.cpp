@@ -12,6 +12,7 @@
 #include "products/image_products.h"
 #include "products/dataset.h"
 #include "resources.h"
+#include "common/calibration.h"
 
 namespace jpss
 {
@@ -37,6 +38,7 @@ namespace jpss
             int insert_zone_size = npp_mode ? 0 : 9;
 
             // Demuxers
+            ccsds::ccsds_weather::Demuxer demuxer_vcid0(mpdu_size, true, insert_zone_size);
             ccsds::ccsds_weather::Demuxer demuxer_vcid1(mpdu_size, true, insert_zone_size);
             ccsds::ccsds_weather::Demuxer demuxer_vcid6(mpdu_size, true, insert_zone_size);
             ccsds::ccsds_weather::Demuxer demuxer_vcid11(mpdu_size, true, insert_zone_size);
@@ -60,12 +62,25 @@ namespace jpss
                 )
                     jpss_scids.push_back(vcdu.spacecraft_id);
 
-                if (vcdu.vcid == 1) // ATMS
+                if (vcdu.vcid == 0) // HK/TM
+                {
+                    std::vector<ccsds::CCSDSPacket> ccsdsFrames = demuxer_vcid0.work(cadu);
+                    for (ccsds::CCSDSPacket &pkt : ccsdsFrames)
+                        if (pkt.header.apid == 11)
+                            att_ephem.work(pkt);
+                }
+                else if (vcdu.vcid == 1) // ATMS
                 {
                     std::vector<ccsds::CCSDSPacket> ccsdsFrames = demuxer_vcid1.work(cadu);
                     for (ccsds::CCSDSPacket &pkt : ccsdsFrames)
                         if (pkt.header.apid == 528)
                             atms_reader.work(pkt);
+                        else if (pkt.header.apid == 515)
+                            atms_reader.work_calib(pkt);
+                        else if (pkt.header.apid == 530)
+                            atms_reader.work_hotcal(pkt);
+                        else if (pkt.header.apid == 531)
+                            atms_reader.work_eng(pkt);
                 }
                 else if (vcdu.vcid == 6) // CrIS
                 {
@@ -115,7 +130,7 @@ namespace jpss
                 if (time(NULL) % 10 == 0 && lastTime != time(NULL))
                 {
                     lastTime = time(NULL);
-                    logger->info("Progress " + std::to_string(round(((float)progress / (float)filesize) * 1000.0f) / 10.0f) + "%%");
+                    logger->info("Progress " + std::to_string(round(((double)progress / (double)filesize) * 1000.0) / 10.0) + "%%");
                 }
             }
 
@@ -176,10 +191,34 @@ namespace jpss
                 atms_products.bit_depth = 16;
                 atms_products.timestamp_type = satdump::ImageProducts::TIMESTAMP_LINE;
                 atms_products.set_timestamps(atms_reader.timestamps);
-                atms_products.set_proj_cfg(loadJsonFile(resources::getResourcePath("projections_settings/jpss_atms.json")));
+                auto proj_cfg = loadJsonFile(resources::getResourcePath("projections_settings/jpss_atms.json"));
+                if (d_parameters["use_ephemeris"].get<bool>())
+                    proj_cfg["ephemeris"] = att_ephem.getEphem();
+                atms_products.set_proj_cfg(proj_cfg);
 
                 for (int i = 0; i < 22; i++)
                     atms_products.images.push_back({"ATMS-" + std::to_string(i + 1), std::to_string(i + 1), atms_reader.getChannel(i)});
+
+                nlohmann::json calib_coefs = loadCborFile(resources::getResourcePath("calibration/ATMS.cbor"));
+                if (calib_coefs.contains(sat_name))
+                {
+                    atms::ATMS_SDR_CC sdr_cc = calib_coefs[sat_name];
+                    nlohmann::json calib_cfg;
+                    calib_cfg["calibrator"] = "jpss_atms";
+                    calib_cfg["vars"] = atms_reader.getCalib();
+                    calib_cfg["sdr_cc"] = calib_coefs[sat_name];
+                    atms_products.set_calibration(calib_cfg);
+                    for (int c = 0; c < 22; c++)
+                    {
+                        atms_products.set_calibration_type(c, atms_products.CALIB_RADIANCE);
+                        atms_products.set_wavenumber(c, freq_to_wavenumber(sdr_cc.centralFrequency[c]));
+                        atms_products.set_calibration_default_radiance_range(c,
+                                                                             temperature_to_radiance(calib_coefs["default_ranges"][c][0].get<double>(), freq_to_wavenumber(sdr_cc.centralFrequency[c])),
+                                                                             temperature_to_radiance(calib_coefs["default_ranges"][c][1].get<double>(), freq_to_wavenumber(sdr_cc.centralFrequency[c])));
+                    }
+                }
+                else
+                    logger->warn("(ATMS) Calibration data for " + sat_name + " not found. Calibration will not be performed");
 
                 atms_products.save(directory);
                 dataset.products_list.push_back("ATMS");
@@ -242,10 +281,10 @@ namespace jpss
                     std::filesystem::create_directories(directory_dnb);
 
                 logger->info("----------- VIIRS");
-                for (int i = 0; i < 16; i++)
-                    logger->info("M" + std::to_string(i + 1) + " Segments : " + std::to_string(viirs_reader_moderate[i].segments.size()));
                 for (int i = 0; i < 5; i++)
                     logger->info("I" + std::to_string(i + 1) + " Segments : " + std::to_string(viirs_reader_imaging[i].segments.size()));
+                for (int i = 0; i < 16; i++)
+                    logger->info("M" + std::to_string(i + 1) + " Segments : " + std::to_string(viirs_reader_moderate[i].segments.size()));
                 logger->info("DNB Segments : " + std::to_string(viirs_reader_dnb[0].segments.size()));
 
                 process_viirs_channels(); // Differential decoding!
@@ -263,12 +302,16 @@ namespace jpss
                 viirs_products.bit_depth = 16;
                 viirs_products.timestamp_type = satdump::ImageProducts::TIMESTAMP_MULTIPLE_LINES;
 
+                nlohmann::json proj_cfg;
                 if (scid == SNPP_SCID)
-                    viirs_products.set_proj_cfg(loadJsonFile(resources::getResourcePath("projections_settings/npp_viirs.json")));
+                    proj_cfg = loadJsonFile(resources::getResourcePath("projections_settings/npp_viirs.json"));
                 else if (scid == JPSS1_SCID)
-                    viirs_products.set_proj_cfg(loadJsonFile(resources::getResourcePath("projections_settings/jpss1_viirs.json")));
+                    proj_cfg = loadJsonFile(resources::getResourcePath("projections_settings/jpss1_viirs.json"));
                 else if (scid == JPSS2_SCID)
-                    viirs_products.set_proj_cfg(loadJsonFile(resources::getResourcePath("projections_settings/jpss2_viirs.json")));
+                    proj_cfg = loadJsonFile(resources::getResourcePath("projections_settings/jpss2_viirs.json"));
+                if (d_parameters["use_ephemeris"].get<bool>())
+                    proj_cfg["ephemeris"] = att_ephem.getEphem();
+                viirs_products.set_proj_cfg(proj_cfg);
 
                 // DNB channels
                 satdump::ImageProducts viirs_dnb_products;
@@ -280,29 +323,14 @@ namespace jpss
                 viirs_dnb_products.timestamp_type = satdump::ImageProducts::TIMESTAMP_MULTIPLE_LINES;
 
                 if (scid == SNPP_SCID)
-                    viirs_dnb_products.set_proj_cfg(loadJsonFile(resources::getResourcePath("projections_settings/npp_viirs_dnb.json")));
+                    proj_cfg = loadJsonFile(resources::getResourcePath("projections_settings/npp_viirs_dnb.json"));
                 else if (scid == JPSS1_SCID)
-                    viirs_dnb_products.set_proj_cfg(loadJsonFile(resources::getResourcePath("projections_settings/jpss1_viirs_dnb.json")));
+                    proj_cfg = loadJsonFile(resources::getResourcePath("projections_settings/jpss1_viirs_dnb.json"));
                 else if (scid == JPSS2_SCID)
-                    viirs_dnb_products.set_proj_cfg(loadJsonFile(resources::getResourcePath("projections_settings/jpss2_viirs_dnb.json")));
-
-                for (int i = 0; i < 16; i++)
-                {
-                    if (viirs_reader_moderate[i].segments.size() > 0)
-                    {
-                        logger->info("M" + std::to_string(i + 1) + "...");
-                        image::Image<uint16_t> viirs_image = viirs_reader_moderate[i].getImage();
-                        viirs_image = image::bowtie::correctGenericBowTie(viirs_image, 1, viirs_reader_moderate[i].channelSettings.zoneHeight, alpha, beta);
-                        viirs_moderate_status[i] = SAVING;
-
-                        viirs_products.images.push_back({"VIIRS-M" + std::to_string(i + 1),
-                                                         "m" + std::to_string(i + 1),
-                                                         viirs_image,
-                                                         viirs_reader_moderate[i].timestamps,
-                                                         viirs_reader_moderate[i].channelSettings.zoneHeight});
-                    }
-                    viirs_moderate_status[i] = DONE;
-                }
+                    proj_cfg = loadJsonFile(resources::getResourcePath("projections_settings/jpss2_viirs_dnb.json"));
+                if (d_parameters["use_ephemeris"].get<bool>())
+                    proj_cfg["ephemeris"] = att_ephem.getEphem();
+                viirs_dnb_products.set_proj_cfg(proj_cfg);
 
                 for (int i = 0; i < 5; i++)
                 {
@@ -320,6 +348,24 @@ namespace jpss
                                                          viirs_reader_imaging[i].channelSettings.zoneHeight});
                     }
                     viirs_imaging_status[i] = DONE;
+                }
+
+                for (int i = 0; i < 16; i++)
+                {
+                    if (viirs_reader_moderate[i].segments.size() > 0)
+                    {
+                        logger->info("M" + std::to_string(i + 1) + "...");
+                        image::Image<uint16_t> viirs_image = viirs_reader_moderate[i].getImage();
+                        viirs_image = image::bowtie::correctGenericBowTie(viirs_image, 1, viirs_reader_moderate[i].channelSettings.zoneHeight, alpha, beta);
+                        viirs_moderate_status[i] = SAVING;
+
+                        viirs_products.images.push_back({"VIIRS-M" + std::to_string(i + 1),
+                                                         "m" + std::to_string(i + 1),
+                                                         viirs_image,
+                                                         viirs_reader_moderate[i].timestamps,
+                                                         viirs_reader_moderate[i].channelSettings.zoneHeight});
+                    }
+                    viirs_moderate_status[i] = DONE;
                 }
 
                 viirs_dnb_status = SAVING;
@@ -437,7 +483,7 @@ namespace jpss
                 ImGui::EndTable();
             }
 
-            ImGui::ProgressBar((float)progress / (float)filesize, ImVec2(ImGui::GetWindowWidth() - 10, 20 * ui_scale));
+            ImGui::ProgressBar((double)progress / (double)filesize, ImVec2(ImGui::GetWindowWidth() - 10, 20 * ui_scale));
 
             ImGui::End();
         }

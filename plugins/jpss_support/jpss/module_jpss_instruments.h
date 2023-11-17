@@ -5,6 +5,7 @@
 #include "instruments/omps/omps_nadir_reader.h"
 #include "instruments/omps/omps_limb_reader.h"
 #include "instruments/viirs/channel_reader.h"
+#include "instruments/att_ephem/att_ephem_reader.h"
 
 namespace jpss
 {
@@ -13,8 +14,8 @@ namespace jpss
         class JPSSInstrumentsDecoderModule : public ProcessingModule
         {
         protected:
-            std::atomic<size_t> filesize;
-            std::atomic<size_t> progress;
+            std::atomic<uint64_t> filesize;
+            std::atomic<uint64_t> progress;
 
             const bool npp_mode;
 
@@ -22,6 +23,8 @@ namespace jpss
             atms::ATMSReader atms_reader;
             omps::OMPSNadirReader omps_nadir_reader;
             omps::OMPSNadirReader omps_limb_reader;
+
+            att_ephem::AttEphemReader att_ephem;
 
             // Readers for all VIIRS APIDs, in order!
             viirs::VIIRSReader viirs_reader_moderate[16] = {viirs::VIIRSChannels[804], viirs::VIIRSChannels[803], viirs::VIIRSChannels[802], viirs::VIIRSChannels[800],

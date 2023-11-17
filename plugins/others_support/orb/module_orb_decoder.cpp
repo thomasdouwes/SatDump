@@ -72,7 +72,7 @@ namespace orb
             if (time(NULL) % 10 == 0 && lastTime != time(NULL))
             {
                 lastTime = time(NULL);
-                logger->info("Progress " + std::to_string(round(((float)progress / (float)filesize) * 1000.0f) / 10.0f) + "%%");
+                logger->info("Progress " + std::to_string(round(((double)progress / (double)filesize) * 1000.0) / 10.0) + "%%");
             }
         }
 
@@ -98,6 +98,8 @@ namespace orb
                 {
                     dec.textureID = makeImageTexture();
                     dec.textureBuffer = new uint32_t[1000 * 1000];
+                    memset(dec.textureBuffer, 0, sizeof(uint32_t) * 1000 * 1000);
+                    dec.hasToUpdate = true;
                 }
 
                 if (dec.is_dling)
@@ -138,6 +140,8 @@ namespace orb
                 {
                     dec.textureID = makeImageTexture();
                     dec.textureBuffer = new uint32_t[1000 * 1000];
+                    memset(dec.textureBuffer, 0, sizeof(uint32_t) * 1000 * 1000);
+                    dec.hasToUpdate = true;
                 }
 
                 if (dec.is_dling)
@@ -185,7 +189,7 @@ namespace orb
         }
         ImGui::EndTabBar();
 
-        ImGui::ProgressBar((float)progress / (float)filesize, ImVec2(ImGui::GetWindowWidth() - 10, 20 * ui_scale));
+        ImGui::ProgressBar((double)progress / (double)filesize, ImVec2(ImGui::GetWindowWidth() - 10, 20 * ui_scale));
 
         ImGui::End();
     }

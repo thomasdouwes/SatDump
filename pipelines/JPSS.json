@@ -6,6 +6,12 @@
         "parameters": {
             "samplerate": {
                 "value": 25e6
+            },
+            "use_ephemeris": {
+                "type": "bool",
+                "value": true,
+                "name": "Use Ephemeris",
+                "description": "Use Ephemeris data from HRD instead of TLE"
             }
         },
         "work": {
@@ -27,12 +33,14 @@
                     "derandomize": true,
                     "nrzm": true,
                     "rs_i": 4,
-                    "rs_type": "rs223"
+                    "rs_type": "rs223",
+                    "rs_usecheck": true
                 }
             },
             "products": {
                 "jpss_instruments": {
-                    "npp_mode": true
+                    "npp_mode": true,
+                    "use_ephemeris": true
                 }
             }
         }
@@ -44,6 +52,12 @@
         "parameters": {
             "samplerate": {
                 "value": 40e6
+            },
+            "use_ephemeris": {
+                "type": "bool",
+                "value": true,
+                "name": "Use Ephemeris",
+                "description": "Use Ephemeris data from HRD instead of TLE"
             }
         },
         "work": {
@@ -66,12 +80,14 @@
                     "derandomize": true,
                     "nrzm": true,
                     "rs_i": 5,
-                    "rs_type": "rs223"
+                    "rs_type": "rs223",
+                    "rs_usecheck": true
                 }
             },
             "products": {
                 "jpss_instruments": {
-                    "npp_mode": false
+                    "npp_mode": false,
+                    "use_ephemeris": true
                 }
             }
         }
@@ -114,7 +130,8 @@
                     "viterbi_outsync_after": 20,
                     "derandomize": true,
                     "rs_i": 5,
-                    "rs_type": "rs223"
+                    "rs_type": "rs223",
+                    "rs_usecheck": true
                 }
             },
             "products": {}

@@ -56,9 +56,9 @@ public:
         for (int i = 0; i < (int)timestamps.size(); i++)
         {
             double timestamp = timestamps[i] + timestamp_offset;
-            geodetic::geodetic_coords_t pos_curr = sat_tracker.get_sat_position_at(timestamp);     // Current position
-            geodetic::geodetic_coords_t pos_next = sat_tracker.get_sat_position_at(timestamp + 1); // Upcoming position
-            sat_positions.push_back(sat_tracker.get_sat_position_at_raw(timestamp));
+            geodetic::geodetic_coords_t pos_curr = sat_tracker->get_sat_position_at(timestamp);     // Current position
+            geodetic::geodetic_coords_t pos_next = sat_tracker->get_sat_position_at(timestamp + 1); // Upcoming position
+            sat_positions.push_back(sat_tracker->get_sat_position_at_raw(timestamp));
             sat_ascendings.push_back(pos_curr.lat < pos_next.lat);
         }
     }
@@ -84,7 +84,7 @@ public:
 
         auto pos_curr = sat_positions[currentArrayValue];
 
-        bool ascending = sat_ascendings[y];
+        // bool ascending = sat_ascendings[y];
 
         double currentIfovOffset = -(((double(currentIfov) - (double(ifov_count) / 2)) / double(ifov_count)) * scan_angle);
         if (ifov_count == 1)
@@ -167,8 +167,8 @@ public:
         for (int i = 0; i < (int)timestamps.size(); i++)
         {
             double timestamp = timestamps[i] + timestamp_offset;
-            geodetic::geodetic_coords_t pos_curr = sat_tracker.get_sat_position_at(timestamp);     // Current position
-            geodetic::geodetic_coords_t pos_next = sat_tracker.get_sat_position_at(timestamp + 1); // Upcoming position
+            geodetic::geodetic_coords_t pos_curr = sat_tracker->get_sat_position_at(timestamp);     // Current position
+            geodetic::geodetic_coords_t pos_next = sat_tracker->get_sat_position_at(timestamp + 1); // Upcoming position
             double az_angle = vincentys_inverse(pos_next, pos_curr).reverse_azimuth * RAD_TO_DEG;
             sat_positions.push_back(pos_curr);
             az_angles.push_back(az_angle);

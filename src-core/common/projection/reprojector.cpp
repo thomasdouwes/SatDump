@@ -36,8 +36,8 @@ namespace satdump
 
             // Here, we first project to an equirectangular target
             image::Image<uint16_t> warped_image;
-            float tl_lon, tl_lat;
-            float br_lon, br_lat;
+            float tl_lon = 0, tl_lat = 0;
+            float br_lon = 0, br_lat = 0;
 
             // Reproject to equirect
             if (op.source_prj_info["type"] == "equirectangular")
@@ -456,7 +456,8 @@ namespace satdump
             {
                 auto gcps = gcp_compute::compute_gcps(params, width, height);
                 std::shared_ptr<projection::TPSTransform> transform = std::make_shared<projection::TPSTransform>();
-                transform->init(gcps, true, false);
+                if (transform->init(gcps, true, false))
+                    std::runtime_error("Error generating TPS!");
                 return [transform, rotate](float lat, float lon, int map_height, int map_width) mutable -> std::pair<int, int>
                 {
                     double x, y;

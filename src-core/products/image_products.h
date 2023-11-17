@@ -4,6 +4,8 @@
 #include "common/image/image.h"
 #include <mutex>
 
+#define CALIBRATION_INVALID_VALUE -999.99
+
 namespace satdump
 {
     class ImageProducts : public Products
@@ -146,9 +148,10 @@ namespace satdump
         {
         public:
             const nlohmann::json d_calib;
+            ImageProducts *d_products;
 
         public:
-            CalibratorBase(nlohmann::json calib) : d_calib(calib) {}
+            CalibratorBase(nlohmann::json calib, ImageProducts *products) : d_calib(calib), d_products(products) {}
             ~CalibratorBase() {}
             virtual void init() = 0;
             virtual double compute(int image_index, int x, int y, int val) = 0;
@@ -159,6 +162,7 @@ namespace satdump
             std::string id;
             std::vector<std::shared_ptr<CalibratorBase>> &calibrators;
             nlohmann::json calib;
+            ImageProducts *products;
         };
 
         bool has_calibation()
@@ -230,7 +234,7 @@ namespace satdump
                 return CALIB_REFLECTANCE;
         }
 
-        double get_calibrated_value(int image_index, int x, int y);
+        double get_calibrated_value(int image_index, int x, int y, bool temp = false);
 
         image::Image<uint16_t> get_calibrated_image(int image_index, float *progress = nullptr, calib_vtype_t vtype = CALIB_VTYPE_AUTO, std::pair<double, double> range = {0, 0});
 
@@ -252,6 +256,7 @@ namespace satdump
     struct ImageCompositeCfg
     {
         std::string equation;
+        bool despeckle = false;
         bool equalize = false;
         bool individual_equalize = false;
         bool invert = false;
@@ -264,11 +269,14 @@ namespace satdump
         std::string lua = "";
         nlohmann::json lua_vars;
         nlohmann::json calib_cfg;
+
+        std::string description_markdown = "";
     };
 
     inline void to_json(nlohmann::json &j, const ImageCompositeCfg &v)
     {
         j["equation"] = v.equation;
+        j["despeckle"] = v.despeckle;
         j["equalize"] = v.equalize;
         j["individual_equalize"] = v.individual_equalize;
         j["invert"] = v.invert;
@@ -306,6 +314,8 @@ namespace satdump
         if (j.contains("calib_cfg"))
             v.calib_cfg = j["calib_cfg"];
 
+        if (j.contains("despeckle"))
+            v.despeckle = j["despeckle"].get<bool>();
         if (j.contains("equalize"))
             v.equalize = j["equalize"].get<bool>();
         if (j.contains("individual_equalize"))
@@ -318,6 +328,9 @@ namespace satdump
             v.white_balance = j["white_balance"].get<bool>();
         if (j.contains("apply_lut"))
             v.apply_lut = j["apply_lut"].get<bool>();
+
+        if (j.contains("description"))
+            v.description_markdown = j["description"].get<std::string>();
     }
 
     image::Image<uint16_t> make_composite_from_product(ImageProducts &product, ImageCompositeCfg cfg, float *progress = nullptr, std::vector<double> *final_timestamps = nullptr, nlohmann::json *final_metadata = nullptr);

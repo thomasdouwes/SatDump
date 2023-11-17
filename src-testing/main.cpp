@@ -10,53 +10,28 @@
  * Don't judge the code you might see in there! :)
  **********************************************************************/
 
-#include "init.h"
 #include "logger.h"
-#include "common/tracking/tle.h"
-#include "libs/predict/predict.h"
-#include "common/geodetic/geodetic_coordinates.h"
-#include "common/geodetic/euler_raytrace.h"
-#include <unistd.h>
+#include "common/image/image.h"
 
-int main(int argc, char *argv[])
+int main(int /*argc*/, char *argv[])
 {
     initLogger();
 
-    // We don't wanna spam with init this time around
-    logger->set_level(slog::LOG_OFF);
-    satdump::initSatdump();
-    logger->set_level(slog::LOG_TRACE);
+    image::Image<uint16_t> img_ch1;
+    image::Image<uint16_t> img_ch2;
 
-    predict_orbital_elements_t *satellite_object;
-    predict_position satellite_orbit;
+    img_ch1.load_img(argv[1]);
+    img_ch2.load_img(argv[2]);
+    int offset = std::stoi(argv[4]);
 
-    auto tle = satdump::general_tle_registry.get_from_norad(40069).value();
+    img_ch1.equalize();
+    img_ch2.equalize();
 
-    satellite_object = predict_parse_tle(tle.line1.c_str(), tle.line2.c_str());
+    image::Image<uint16_t> output_rgb(img_ch1.width(), img_ch2.height(), 3);
 
-    while (1)
-    {
-        time_t utc_time = time(0);
+    output_rgb.draw_image(2, img_ch1);
+    output_rgb.draw_image(1, img_ch1);
+    output_rgb.draw_image(0, img_ch2, offset);
 
-        auto utc_jul = predict_to_julian_double(utc_time);
-        predict_orbit(satellite_object, &satellite_orbit, utc_jul);
-
-        auto position = geodetic::geodetic_coords_t(satellite_orbit.latitude, satellite_orbit.longitude, satellite_orbit.altitude, true).toDegs();
-
-        geodetic::geodetic_coords_t earth_point, earth_point2;
-
-        geodetic::raytrace_to_earth_old(position, {50, 0, 0}, earth_point);
-        earth_point.toDegs();
-
-        geodetic::raytrace_to_earth(utc_jul, satellite_orbit.position, satellite_orbit.velocity, {50, 0, 0}, earth_point2);
-
-        logger->info("%f %f ---- %f %f ---- %f %f",
-                     position.lon, position.lat,
-                     earth_point.lon, earth_point.lat,
-                     earth_point2.lon, earth_point2.lat);
-
-        sleep(1);
-    }
-
-    predict_destroy_orbital_elements(satellite_object);
+    output_rgb.save_img(argv[3]);
 }

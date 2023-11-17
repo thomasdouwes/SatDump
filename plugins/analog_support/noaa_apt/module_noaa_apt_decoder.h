@@ -11,7 +11,6 @@
 #include "common/image/image.h"
 
 #define APT_IMG_WIDTH 2080
-#define APT_MAX_LINES 2400
 #define APT_IMG_OVERS 4
 
 namespace noaa_apt
@@ -45,8 +44,8 @@ namespace noaa_apt
     class NOAAAPTDecoderModule : public ProcessingModule
     {
     protected:
-        std::atomic<size_t> filesize;
-        std::atomic<size_t> progress;
+        std::atomic<uint64_t> filesize;
+        std::atomic<uint64_t> progress;
 
         long d_audio_samplerate;
         bool d_autocrop_wedges = false;

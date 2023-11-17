@@ -43,7 +43,8 @@ namespace satdump
             if (images[c].filename.find(".png") == std::string::npos &&
                 images[c].filename.find(".jpeg") == std::string::npos &&
                 images[c].filename.find(".jpg") == std::string::npos &&
-                images[c].filename.find(".j2k") == std::string::npos)
+                images[c].filename.find(".j2k") == std::string::npos &&
+                images[c].filename.find(".pbm") == std::string::npos)
                 images[c].filename += "." + image_format;
             else
                 logger->trace("Image format was specified in product call. Not supposed to happen!");
@@ -175,7 +176,7 @@ namespace satdump
             std::string calibrator_id = contents["calibration"]["calibrator"].get<std::string>();
 
             std::vector<std::shared_ptr<CalibratorBase>> calibrators;
-            satdump::eventBus->fire_event<RequestCalibratorEvent>({calibrator_id, calibrators, contents["calibration"]});
+            satdump::eventBus->fire_event<RequestCalibratorEvent>({calibrator_id, calibrators, contents["calibration"], this});
             if (calibrators.size() > 0)
                 calibrator_ptr = calibrators[0];
             else
@@ -199,15 +200,17 @@ namespace satdump
         }
     }
 
-    double ImageProducts::get_calibrated_value(int image_index, int x, int y)
+    double ImageProducts::get_calibrated_value(int image_index, int x, int y, bool temp)
     {
         calib_mutex.lock();
         uint16_t val = images[image_index].image[y * images[image_index].image.width() + x] >> (16 - bit_depth);
-        double val2;
+        double val2 = CALIBRATION_INVALID_VALUE;
         if (calibrator_ptr != nullptr)
             val2 = calibrator_ptr->compute(image_index, x, y, val);
         else if (lua_state_ptr != nullptr)
             val2 = ((sol::function *)lua_comp_func_ptr)->call(image_index, x, y, val).get<double>();
+        if (get_calibration_type(image_index) == calib_type_t::CALIB_RADIANCE && temp)
+            val2 = radiance_to_temperature(val2, get_wavenumber(image_index));
         calib_mutex.unlock();
         return val2;
     }
@@ -501,6 +504,9 @@ namespace satdump
             rgb_composite = image::generate_composite_from_lut(images_obj, channel_numbers, resources::getResourcePath(cfg.lut), offsets, progress);
         else
             rgb_composite = image::generate_composite_from_equ(images_obj, channel_numbers, cfg.equation, offsets, progress);
+
+        if (cfg.despeckle)
+            rgb_composite.kuwahara_filter();
 
         if (cfg.equalize)
             rgb_composite.equalize();

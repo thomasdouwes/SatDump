@@ -9,6 +9,8 @@
 #include "../aqua/instruments/ceres/ceres_reader.h"
 #include "../aura/instruments/omi/omi_reader.h"
 
+#include "../aqua/instruments/gbad/gbad_reader.h"
+
 namespace eos
 {
     namespace instruments
@@ -26,8 +28,8 @@ namespace eos
             eos_sat_t d_satellite;
             bool d_modis_bowtie;
 
-            std::atomic<size_t> filesize;
-            std::atomic<size_t> progress;
+            std::atomic<uint64_t> filesize;
+            std::atomic<uint64_t> progress;
 
             // Readers
             modis::MODISReader modis_reader;
@@ -38,6 +40,8 @@ namespace eos
             aqua::ceres::CERESReader ceres_fm4_reader;
             aura::omi::OMIReader omi_1_reader;
             aura::omi::OMIReader omi_2_reader;
+
+            aqua::gbad::GBADReader gbad_reader;
 
             // Statuses
             instrument_status_t modis_status = DECODING;
